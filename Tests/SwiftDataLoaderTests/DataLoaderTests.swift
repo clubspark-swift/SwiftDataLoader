@@ -12,16 +12,16 @@ final class DataLoaderTests: XCTestCase {
         defer {
             XCTAssertNoThrow(try eventLoopGroup.syncShutdownGracefully())
         }
-
-        let identityLoader = DataLoader<Int, Int>(options: DataLoaderOptions(batchingEnabled: false)) { keys in
+        
+        let identityLoader = DataLoader<Int, Int>(options: DataLoaderOptions(batchingEnabled: false), batchLoadFunction: { (keys) in
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
-        let value = try identityLoader.load(key: 1, on: eventLoopGroup)
+        let value = try identityLoader.load(key: 1)
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value.wait() == 1)
     }
@@ -32,16 +32,16 @@ final class DataLoaderTests: XCTestCase {
         defer {
             XCTAssertNoThrow(try eventLoopGroup.syncShutdownGracefully())
         }
-
-        let identityLoader = DataLoader<Int, Int>() { keys in
+        
+        let identityLoader = DataLoader<Int, Int>(batchLoadFunction: { (keys) in
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
         let values = try identityLoader.loadMany(keys: [1, 2], on: eventLoopGroup)
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try values.wait() == [1,2])
 
@@ -58,23 +58,23 @@ final class DataLoaderTests: XCTestCase {
         }
 
         var loadCalls = [[Int]]()
-
-        let identityLoader = DataLoader<Int, Int>(options: DataLoaderOptions(batchingEnabled: true)) { keys in
+        
+        let identityLoader = DataLoader<Int, Int>(options: DataLoaderOptions(batchingEnabled: true), batchLoadFunction: { (keys) in
             loadCalls.append(keys)
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
-        let value1 = try identityLoader.load(key: 1, on: eventLoopGroup)
-        let value2 = try identityLoader.load(key: 2, on: eventLoopGroup)
+        let value1 = try identityLoader.load(key: 1)
+        let value2 = try identityLoader.load(key: 2)
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value1.map { $0 }.wait() == 1)
         XCTAssertTrue(try value2.map { $0 }.wait() == 2)
 
-        XCTAssertTrue(loadCalls == [[1,2]])
+        XCTAssertTrue(loadCalls == [[1], [2]])
     }
 
     /// Batches multiple requests with max batch sizes
@@ -85,19 +85,20 @@ final class DataLoaderTests: XCTestCase {
         }
 
         var loadCalls = [[Int]]()
-
-        let identityLoader = DataLoader<Int, Int>(options: DataLoaderOptions(batchingEnabled: true, maxBatchSize: 2)) { keys in
+            
+        let identityLoader = DataLoader<Int, Int>(options: DataLoaderOptions(batchingEnabled: true, maxBatchSize: 2), batchLoadFunction: { (keys) in
+            
             loadCalls.append(keys)
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
-        let value1 = try identityLoader.load(key: 1, on: eventLoopGroup)
-        let value2 = try identityLoader.load(key: 2, on: eventLoopGroup)
-        let value3 = try identityLoader.load(key: 3, on: eventLoopGroup)
+        let value1 = try identityLoader.load(key: 1 )
+        let value2 = try identityLoader.load(key: 2 )
+        let value3 = try identityLoader.load(key: 3 )
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value1.map { $0 }.wait() == 1)
         XCTAssertTrue(try value2.map { $0 }.wait() == 2)
@@ -114,18 +115,18 @@ final class DataLoaderTests: XCTestCase {
         }
 
         var loadCalls = [[Int]]()
-
-        let identityLoader = DataLoader<Int, Int>(options: DataLoaderOptions()) { keys in
+        
+        let identityLoader = DataLoader<Int, Int>(batchLoadFunction: { (keys) in
             loadCalls.append(keys)
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
-        let value1 = try identityLoader.load(key: 1, on: eventLoopGroup)
-        let value2 = try identityLoader.load(key: 1, on: eventLoopGroup)
+        let value1 = try identityLoader.load(key: 1)
+        let value2 = try identityLoader.load(key: 1)
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value1.map { $0 }.wait() == 1)
         XCTAssertTrue(try value2.map { $0 }.wait() == 1)
@@ -141,38 +142,38 @@ final class DataLoaderTests: XCTestCase {
         }
 
         var loadCalls = [[String]]()
-
-        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions()) { keys in
+        
+        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions(), batchLoadFunction: { (keys) in
             loadCalls.append(keys)
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
-        let value1 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value2 = try identityLoader.load(key: "B", on: eventLoopGroup)
+        let value1 = try identityLoader.load(key: "A")
+        let value2 = try identityLoader.load(key: "B")
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value1.wait() == "A")
         XCTAssertTrue(try value2.wait() == "B")
         XCTAssertTrue(loadCalls == [["A", "B"]])
 
-        let value3 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value4 = try identityLoader.load(key: "C", on: eventLoopGroup)
+        let value3 = try identityLoader.load(key: "A")
+        let value4 = try identityLoader.load(key: "C")
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value3.wait() == "A")
         XCTAssertTrue(try value4.wait() == "C")
         XCTAssertTrue(loadCalls == [["A", "B"], ["C"]])
 
-        let value5 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value6 = try identityLoader.load(key: "B", on: eventLoopGroup)
-        let value7 = try identityLoader.load(key: "C", on: eventLoopGroup)
+        let value5 = try identityLoader.load(key: "A")
+        let value6 = try identityLoader.load(key: "B")
+        let value7 = try identityLoader.load(key: "C")
 
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value5.wait() == "A")
         XCTAssertTrue(try value6.wait() == "B")
@@ -188,18 +189,19 @@ final class DataLoaderTests: XCTestCase {
         }
 
         var loadCalls = [[String]]()
-
-        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions()) { keys in
+        
+        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions(), batchLoadFunction: { (keys) in
+            
             loadCalls.append(keys)
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
-        let value1 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value2 = try identityLoader.load(key: "B", on: eventLoopGroup)
+        let value1 = try identityLoader.load(key: "A" )
+        let value2 = try identityLoader.load(key: "B" )
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value1.wait() == "A")
         XCTAssertTrue(try value2.wait() == "B")
@@ -207,10 +209,10 @@ final class DataLoaderTests: XCTestCase {
 
         _ = identityLoader.clear(key: "A")
 
-        let value3 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value4 = try identityLoader.load(key: "B", on: eventLoopGroup)
+        let value3 = try identityLoader.load(key: "A" )
+        let value4 = try identityLoader.load(key: "B" )
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value3.wait() == "A")
         XCTAssertTrue(try value4.wait() == "B")
@@ -225,18 +227,19 @@ final class DataLoaderTests: XCTestCase {
         }
 
         var loadCalls = [[String]]()
-
-        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions()) { keys in
+        
+        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions(), batchLoadFunction: { (keys) in
+            
             loadCalls.append(keys)
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
-        let value1 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value2 = try identityLoader.load(key: "B", on: eventLoopGroup)
+        let value1 = try identityLoader.load(key: "A" )
+        let value2 = try identityLoader.load(key: "B" )
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value1.wait() == "A")
         XCTAssertTrue(try value2.wait() == "B")
@@ -244,10 +247,10 @@ final class DataLoaderTests: XCTestCase {
 
         _ = identityLoader.clearAll()
 
-        let value3 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value4 = try identityLoader.load(key: "B", on: eventLoopGroup)
+        let value3 = try identityLoader.load(key: "A" )
+        let value4 = try identityLoader.load(key: "B" )
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value3.wait() == "A")
         XCTAssertTrue(try value4.wait() == "B")
@@ -262,20 +265,20 @@ final class DataLoaderTests: XCTestCase {
         }
 
         var loadCalls = [[String]]()
-
-        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions()) { keys in
+        
+        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions(), batchLoadFunction: { (keys) in
             loadCalls.append(keys)
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
         _ = identityLoader.prime(key: "A", value: "A", on: eventLoopGroup)
 
-        let value1 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value2 = try identityLoader.load(key: "B", on: eventLoopGroup)
+        let value1 = try identityLoader.load(key: "A")
+        let value2 = try identityLoader.load(key: "B")
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value1.wait() == "A")
         XCTAssertTrue(try value2.wait() == "B")
@@ -290,31 +293,31 @@ final class DataLoaderTests: XCTestCase {
         }
 
         var loadCalls = [[String]]()
-
-        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions()) { keys in
+        
+        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions(), batchLoadFunction: { (keys) in
             loadCalls.append(keys)
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
-        _ = identityLoader.prime(key: "A", value: "X", on: eventLoopGroup)
+        _ = identityLoader.prime(key: "A", value: "X", on: eventLoopGroup )
 
-        let value1 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value2 = try identityLoader.load(key: "B", on: eventLoopGroup)
+        let value1 = try identityLoader.load(key: "A" )
+        let value2 = try identityLoader.load(key: "B" )
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value1.wait() == "X")
         XCTAssertTrue(try value2.wait() == "B")
 
-        _ = identityLoader.prime(key: "A", value: "Y", on: eventLoopGroup)
-        _ = identityLoader.prime(key: "B", value: "Y", on: eventLoopGroup)
+        _ = identityLoader.prime(key: "A", value: "Y", on: eventLoopGroup )
+        _ = identityLoader.prime(key: "B", value: "Y", on: eventLoopGroup )
 
-        let value3 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value4 = try identityLoader.load(key: "B", on: eventLoopGroup)
+        let value3 = try identityLoader.load(key: "A" )
+        let value4 = try identityLoader.load(key: "B" )
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value3.wait() == "X")
         XCTAssertTrue(try value4.wait() == "B")
@@ -330,31 +333,31 @@ final class DataLoaderTests: XCTestCase {
         }
 
         var loadCalls = [[String]]()
-
-        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions()) { keys in
+        
+        let identityLoader = DataLoader<String, String>(options: DataLoaderOptions(), batchLoadFunction: { (keys) in
             loadCalls.append(keys)
             let results = keys.map { DataLoaderFutureValue.success($0) }
 
-            return eventLoopGroup.next().newSucceededFuture(result: results)
-        }
+            return eventLoopGroup.next().makeSucceededFuture(results)
+        }, eventLoop: eventLoopGroup.next())
 
         _ = identityLoader.prime(key: "A", value: "X", on: eventLoopGroup)
 
-        let value1 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value2 = try identityLoader.load(key: "B", on: eventLoopGroup)
+        let value1 = try identityLoader.load(key: "A" )
+        let value2 = try identityLoader.load(key: "B" )
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value1.wait() == "X")
         XCTAssertTrue(try value2.wait() == "B")
 
-        _ = identityLoader.clear(key: "A").prime(key: "A", value: "Y", on: eventLoopGroup)
+        _ = identityLoader.clear(key: "A").prime(key: "A", value: "Y", on: eventLoopGroup )
         _ = identityLoader.clear(key: "B").prime(key: "B", value: "Y", on: eventLoopGroup)
 
-        let value3 = try identityLoader.load(key: "A", on: eventLoopGroup)
-        let value4 = try identityLoader.load(key: "B", on: eventLoopGroup)
+        let value3 = try identityLoader.load(key: "A" )
+        let value4 = try identityLoader.load(key: "B" )
 
-        XCTAssertNoThrow(try identityLoader.dispatchQueue(on: eventLoopGroup))
+        XCTAssertNoThrow(try identityLoader.dispatchQueue())
 
         XCTAssertTrue(try value3.wait() == "Y")
         XCTAssertTrue(try value4.wait() == "Y")
