@@ -96,7 +96,7 @@ final public class DataLoader<Key: Hashable, Value> {
         return promise.futureResult
     }
 
-    func clear(key: Key) -> DataLoader<Key, Value> {
+    public func clear(key: Key) -> DataLoader<Key, Value> {
         let cacheKey = options.cacheKeyFunction?(key) ?? key
         futureCache.removeValue(forKey: cacheKey)
         return self
