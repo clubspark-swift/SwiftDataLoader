@@ -107,7 +107,7 @@ final public class DataLoader<Key: Hashable, Value> {
         return self
     }
 
-    func prime(key: Key, value: Value, on eventLoop: EventLoopGroup) -> DataLoader<Key, Value> {
+    public func prime(key: Key, value: Value, on eventLoop: EventLoopGroup) -> DataLoader<Key, Value> {
         let cacheKey = options.cacheKeyFunction?(key) ?? key
 
         if futureCache[cacheKey] == nil {
